@@ -131,3 +131,6 @@ statsService = TCPServer(adminConfig.AdminPort+1, statsServer,
     interface='127.0.0.1') # restrict to localhost requests only
 statsService.setServiceParent(application)
 
+# stun server
+from fiveserver.stun import start_stun_server
+start_stun_server()
