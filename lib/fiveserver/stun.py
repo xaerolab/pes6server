@@ -134,7 +134,7 @@ class STUNServer(DatagramProtocol):
 
 def start_stun_server():
     # Configura tu IP pública o local aquí
-    server_ip = "195.26.248.178"  # Cambia a la IP de tu servidor
+    server_ip = "127.0.0.1"  # Cambia a la IP de tu servidor
     alternate_ip = "195.26.248.178"  # Cambia si tienes una IP alternativa
     logger.info(f"Starting STUN server on {server_ip}:{STUN_PORT} with alternate {alternate_ip}:{ALTERNATE_PORT}")
     reactor.listenUDP(STUN_PORT, STUNServer(alternate_port=ALTERNATE_PORT, server_ip=server_ip, alternate_ip=alternate_ip))
