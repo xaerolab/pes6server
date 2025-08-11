@@ -1,0 +1,9 @@
+mysqlclient>=2.2.0
+PyYAML>=6.0.1
+Twisted>=22.10.0
+Flask>=2.3.2
+requests>=2.31.0
+pycryptodome>=3.20.0
+pyOpenSSL>=24.2.1
+service_identity>=24.1.0
+pystun3>=1.0.0
