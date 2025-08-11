@@ -1,44 +1,46 @@
-#!/bin/sh
-### BEGIN INIT INFO
-# Provides:          sixserver
-# Required-Start:    $all
-# Required-Stop:     $all
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Short-Description: Start sixserver daemon at boot time
-# Description:       Enable sixserver service
-### END INIT INFO
+#!/usr/bin/env bash
+fsroot=${FSROOT:-.}
+export FSENV=${FSENV:-.local}
+export PYTHONPATH=${fsroot}/lib:$PYTHONPATH
 
-export FSENV=/opt/sixserver/sixserver-env
-export PYTHONPATH=/opt/sixserver/lib:$PYTHONPATH
+# this is needed on MacOS
+export LD_LIBRARY_PATH=/usr/local/mysql/lib
 
 RETVAL=0
 
-PROG=sixserver
-TAC=/opt/sixserver/etc/sixserver.tac
-LOG=/var/log/sixserver/sixserver.log
-PID=/opt/sixserver/sixserver.pid
-
 case "$1" in
+    fiveserver)
+        PROG=fiveserver
+        TAC=${fsroot}/tac/fiveserver.tac
+        LOG=${fsroot}/log/fiveserver.log
+        PID=${fsroot}/log/fiveserver.pid
+        ;;
+    sixserver)
+        PROG=sixserver
+        TAC=${fsroot}/tac/sixserver.tac
+        LOG=${fsroot}/log/sixserver.log
+        PID=${fsroot}/log/sixserver.pid
+        ;;
+    *)
+        echo "Usage $0 {fiveserver|sixserver} {run|start|stop|status}"
+        RETVAL=3
+        exit $RETVAL
+esac
+
+case "$2" in
     run)
-        echo "sixserver run..."
-		${FSENV}/bin/twistd -noy $TAC
+        ${FSENV}/bin/twistd -noy $TAC
+        ;;
+    runexec)
+        exec ${FSENV}/bin/twistd -noy $TAC --logfile $LOG --pidfile $PID
         ;;
     start)
-        echo "sixserver start..."
-		${FSENV}/bin/twistd -ny $TAC --logfile $LOG --pidfile $PID &
+        ${FSENV}/bin/twistd -y $TAC --logfile $LOG --pidfile $PID
         ;;
     stop)
-		echo "sixserver stop..."
         cat $PID | xargs kill
         ;;
-    restart)
-		echo "sixserver restart..."
-		$0 stop
-        sleep 3
-        $0 start
-        ;;
-status)
+    status)
         if [ -f $PID ]; then
             pid=`cat $PID`
             ps $pid >/dev/null 2>&1
@@ -53,7 +55,7 @@ status)
         fi
         ;;
     *)
-        echo "Usage $0 {run|start|stop|status}"
+        echo "Usage $0 {fiveserver|sixserver} {run|start|stop|status}"
         RETVAL=3
 esac
 

@@ -24,26 +24,28 @@ Lobbies:
     - 'Guest Lobby'
 
 GamePorts:
-    pes6: 10881
-    #we2007: 10881
+    pes5: 16001
+    we9le: 19501
+    we9: 18001
 
 NetworkServer:
-    mainService: 20200
-    networkMenuService: 20201
+    mainService: 20100
+    networkMenuService: 20101
     loginService:
-        pes6: 20202
-        we2007: 20203
+        pes5: 20102
+        we9: 20103
+        we9le: 20104
 
 WebInterface:
-    port: 8190
+    port: 8180
 
 Debug:
     false
 
 DB:
-    name: sixserver
-    user: sixserver
-    password: proevo
+    name: fiveserver
+    user: fiveserver
+    password: we9le
     readServers: [127.0.0.1]
     writeServers: [127.0.0.1]
     sharePool: True
@@ -52,7 +54,7 @@ DB:
         maxConnections: 5
         keepAliveInterval: 60
 
-BannedList: ./etc/data/banned6.yaml
+BannedList: ./etc/data/banned.yaml
 
 Chat:
     bannedWords: []
@@ -70,12 +72,12 @@ StoreSettings: true
 
 ShowStats: true
 
-#Disconnects:
-#    CountAsLoss:
-#        Enabled: false
-#        Score:
-#            player: 0
-#            opponent: 3
+Disconnects:
+    CountAsLoss:
+        Enabled: false
+        Score:
+            player: 0
+            opponent: 3
 
 ServerName: "Fiveserver"
 
@@ -83,7 +85,7 @@ Greeting:
     "text": "\
 Welcome to Fiveserver -\n\
 independent community server\n\
-supporting PES6/WE2007 games.\n\
+supporting PES5/WE9/WE9LE games.\n\
 Have a good time, play some nice\n\
 football and try to score goals.\n\
 \n\

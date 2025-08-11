@@ -1,9 +1,7 @@
 from twisted.internet import defer
-from model import user
-import log
-import sys
-import errors
-import traceback
+from fiveserver.model import user
+from fiveserver import errors
+
 
 class ProfileLogic:
     """
@@ -48,21 +46,6 @@ class ProfileLogic:
         (_, (scored_away, allowed_away)) = results[1]
         goals_scored = scored_home + scored_away
         goals_allowed = allowed_home + allowed_away
-        # historic data
-        historyWins = 0
-        historyLosses = 0
-        historyDraws = 0
-        historyDC = 0
-        try:
-            results = yield self.matchData.getHistoryData(profileId)
-            historyWins, historyLosses, historyDraws, historyDC = results
-        except:
-            log.msg('ERROR in logic.getStats:')
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-        # log.msg("HistoryData: W=%s L=%s D=%s DC=%s" % (historyWins, historyLosses, historyDraws, historyDC))
-        
         # streaks
         results = yield self.matchData.getStreaks(profileId)
         current, best = results
@@ -73,8 +56,7 @@ class ProfileLogic:
             teams = None
 
         stats = user.Stats(
-            profileId, wins, losses, draws, 
-            historyWins, historyLosses, historyDraws, historyDC,
+            profileId, wins, losses, draws,
             goals_scored, goals_allowed,
             current, best, teams)
         defer.returnValue(stats)

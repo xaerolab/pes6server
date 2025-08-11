@@ -7,10 +7,8 @@ import struct
 import random
 
 from fiveserver import log
-import util
-import user
-import sys
-import traceback
+from fiveserver.model import util, user
+
 
 MAX_MESSAGES = 50
 MAX_AGE_DAYS = 5
@@ -33,7 +31,7 @@ class ChatMessage:
 
 class Lobby:
 
-    def __init__(self, name, maxPlayers, matchData):
+    def __init__(self, name, maxPlayers):
         self.name = name
         self.maxPlayers = maxPlayers
         self.players = dict()
@@ -44,35 +42,24 @@ class Lobby:
         self.checkRosterHash = True
         self.roomOrdinal = 0
         self.chatHistory = list()
-        self.matchData = matchData
 
-    def __str__(self):
+    def __bytes__(self):
         """
         return serialized representation to be used in packets
         """
-        return '%s%s%s' % (
+        return b'%s%s%s' % (
                 struct.pack('!B',self.typeCode),
                 util.padWithZeros(self.name,32),
                 struct.pack('!H',len(self.players)))
 
     def getPlayerByProfileId(self, id):
-        for usr in self.players.itervalues():
+        for usr in self.players.values():
             if usr.profile.id == id:
                 return usr
         return None
 
     def addToChatHistory(self, chatMessage):
         self.chatHistory.append(chatMessage)
-        try:
-            if chatMessage.toProfile is not None:
-                log.msg('[CHAT] [%s] (%s -> %s) %s' % (self.name, chatMessage.fromProfile.name, chatMessage.toProfile.name, chatMessage.text.decode('utf-8')))
-            else:
-                log.msg('[CHAT] [%s] (%s) %s' % (self.name, chatMessage.fromProfile.name, chatMessage.text.decode('utf-8')))
-        except:
-            log.msg("Error in addToChatHistory: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
         # keep only last MAX_MESSAGES messages. We don't want this
         # to be a memory leak
         del self.chatHistory[0:-MAX_MESSAGES] 
@@ -122,7 +109,7 @@ class Lobby:
         return self.rooms[name]
 
     def getRoomById(self, roomId):
-        for room in self.rooms.itervalues():
+        for room in self.rooms.values():
             if room.id == roomId:
                 return room
         return None
@@ -160,8 +147,7 @@ class Room:
         
         self.participatingPlayers = list()
         self.phase = 1 # Phase of room and used in 0x4344
-        self.lastUpdate = datetime.now()
-        
+
     def __cmp__(self, another):
         if another is None:
             return -1
@@ -177,13 +163,6 @@ class Room:
         return 0
 
     def enter(self, usr):
-        try:
-            log.debug('Room.enter: profiles=%s' % ','.join([x.name for x in usr.profiles]))
-
-            log.debug('Room.enter: self.name=%s' % self.name)
-        except:
-            log.msg('ERROR logging Room.enter')
-
         usr.state.inRoom = 1
         usr.state.room = self
         usr.state.spectator = 0
@@ -193,48 +172,17 @@ class Room:
         self.players.append(usr)
 
     def exit(self, usr):
-        try:
-            log.debug('Room.exit: username=%s profiles=%s' % (usr.username, ','.join([x.name for x in usr.profiles])))
-            log.debug('Room.exit: usr.state.room.name=%s' % usr.state.room.name)
-        except:
-            log.msg('ERROR logging Room.exit')
-        
         usr.state.inRoom = 0
         usr.state.noLobbyChat = 0
         usr.state.room = None
-        
-        try:
-            log.debug('self.owner.profile.name=%s' % self.owner.profile.name)
-        except:
-            log.msg('ERROR logging Room.exit (2)')       
-            
         try: 
-            try:
-                for usr2 in self.players:
-                    log.debug('self.players.profiles=%s' % ','.join([x.name for x in usr2.profiles]))
-            except:
-                log.msg('Room.exit: Error iterating (1)  %s' % sys.exc_info()[0])
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                log.msg("Lines: %s" % lines)
-            index = self.getPlayerPosition(usr)
-            log.debug('popping index=%s' % index)
-            exiting = self.players.pop(index)
-            try:
-                for usr2 in self.players:
-                    log.debug('self.players.profiles=%s' % ','.join([x.name for x in usr2.profiles]))
-            except:
-                log.msg('Room.exit: Error iterating (2)  %s' % sys.exc_info()[0])
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                log.msg("Lines: %s" % lines)
-        except:
+            exiting = self.players.pop(self.getPlayerPosition(usr))
+        except ValueError:
             log.msg(
                 'WARN: player (%s) exiting, but was not in the room' % (
                     usr.profile.name))
         else:
             if self.isOwner(exiting):
-                log.debug('owner exiting')
                 # owner is exiting: assign new owner, if anybody
                 # is still left in the room.
                 if self.players:
@@ -258,24 +206,13 @@ class Room:
 
     def cancelParticipation(self, usr):
         try:
-            self.participatingPlayers.pop(self.participatingPlayers.index(usr))
-            log.msg('cancelParticipation: %s=%s' % (usr.profile.id, usr.profile.name))
+            self.participatingPlayers.pop(
+                self.participatingPlayers.index(usr))
         except ValueError:
             log.msg(
                 'WARN player (%s) is cancelling participation, '
                 'but was not among participants.' % (
                     usr.profile.name))
-        try:
-            if self.match is not None:
-                matchId = self.match.id
-                log.msg('cancelParticipation: matchId: %s' % matchId)
-                if matchId > -1:
-                    self.lobby.matchData.MatchStatusSetCancel(matchId, usr.profile.id)
-        except:
-            log.msg("Error in cancelParticipation: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
         return 0xff
     
     def isForcedCancelledParticipation(self, usr):
@@ -311,9 +248,9 @@ class Room:
     def isAtPregameSettings(self, room):
         return RoomState.ROOM_IDLE < room.phase < RoomState.ROOM_MATCH_STARTED
     
-    def __str__(self):
-        return 'Room(id=%d, name="%s", players=%d, participating=%d)' % (
-                self.id, self.name, len(self.players), len(self.participatingPlayers))
+    def __repr__(self):
+        return 'Room(id=%d, name="%s", players=%d)' % (
+                self.id, self.name, len(self.players))
 
 
 class MatchSettings:
@@ -400,7 +337,6 @@ class MatchState:
 class Match:
 
     def __init__(self, match=None):
-        self.id = 0
         self.home_profile = None
         self.away_profile = None
         self.home_team_id = None
@@ -432,41 +368,16 @@ class TeamSelection:
         # pes6 only: for 2v2, 2v1 or 3v1 matches
         self.home_more_players = [] 
         self.away_more_players = []
-
-    def getHomeOrAway(self, usr):
-        # try:
-            # log.msg('usr.profile.id=%s' % usr.profile.id)
-            #if (self.home_captain is None):
-                #log.msg('self.home_captain is None')
-            #else:
-                #log.msg('self.home_captain.id=%s' % self.home_captain.id)
-            #if (self.away_captain is None):
-                #log.msg('self.away_captain is None')
-            #else:
-            #log.msg('self.away_captain.id=%s' % self.away_captain.id)
-        #except:
-        #    log.msg("Error logging in getHomeOrAway: %s" % sys.exc_info()[0])
-        #    exc_type, exc_value, exc_traceback = sys.exc_info()
-        #    lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-        #    log.msg("Lines: %s" % lines)
         
-        try:
-            if ((self.home_captain is not None and (usr.profile.id == self.home_captain.id)) or 
-                any(prof for prof in self.home_more_players 
-                    if prof.id == usr.profile.id)):
-                #log.msg('returning 0x00')
-                return 0x00
-            if ((self.away_captain is not None and (usr.profile.id == self.away_captain.id)) or 
-                any(prof for prof in self.away_more_players 
-                    if prof.id == usr.profile.id)):
-                #log.msg('returning 0x01')
-                return 0x01
-        except:
-            log.msg("Error in getHomeOrAway: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-        #log.msg('returning 0xff')
+    def getHomeOrAway(self, usr):
+        if (usr.profile.id == self.home_captain.id or 
+            any(prof for prof in self.home_more_players 
+                if prof.id == usr.profile.id)):
+            return 0x00
+        if (usr.profile.id == self.away_captain.id or 
+            any(prof for prof in self.away_more_players 
+                if prof.id == usr.profile.id)):
+            return 0x01
         return 0xff
 
 class Match6:
@@ -488,23 +399,7 @@ class Match6:
         self.startDatetime = None
         self.home_exit = None
         self.away_exit = None
-    
-    def __str__(self):
-        resStr = ""
-        try:
-            resStr = ('Match (clock=%s)' % self.clock)
-            if self.teamSelection:
-                resStr += (' (self.teamSelection.home_captain.name=%s)' % self.teamSelection.home_captain.name)
-                resStr += (' (self.teamSelection.away_captain.name=%s)' % self.teamSelection.away_captain.name)
-                resStr += (' (scoreHome=%s)' % self.getScoreHome())
-                resStr += (' (scoreAway=%s)' % self.getScoreAway())
-        except:
-            log.msg("Error in __str__: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-        return resStr 
-        
+
     def getScoreHome(self):
         return (
             self.score_home_1st +
@@ -523,18 +418,6 @@ class Match6:
             self.score_away_pen)
     score_away = property(getScoreAway)
 
-    def getScoreHomeRegularTime(self):
-        return (
-            self.score_home_1st +
-            self.score_home_2nd)
-    score_home_reg = property(getScoreHomeRegularTime)
-
-    def getScoreAwayRegularTime(self):
-        return (
-            self.score_away_1st +
-            self.score_away_2nd)
-    score_away_reg = property(getScoreAwayRegularTime)
-
     def goalHome(self):
         state = self.state
         if state == MatchState.FIRST_HALF:
@@ -547,15 +430,6 @@ class Match6:
             self.score_home_et2 += 1
         elif state == MatchState.PENALTIES:
             self.score_home_pen += 1
-        else:
-            try:
-                log.msg("WARNING: Unknown game state: %s. Adding goal to first half." % state)
-                self.score_home_1st += 1
-            except:
-                log.msg("Error in goalHome: %s" % sys.exc_info()[0])
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                log.msg("Lines: %s" % lines)
 
     def goalAway(self):
         state = self.state
@@ -569,13 +443,4 @@ class Match6:
             self.score_away_et2 += 1
         elif state == MatchState.PENALTIES:
             self.score_away_pen += 1
-        else:
-            try:
-                log.msg("WARNING: Unknown game state: %s. Adding goal to first half." % state)
-                self.score_away_1st += 1
-            except:
-                log.msg("Error in goalHome: %s" % sys.exc_info()[0])
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-                log.msg("Lines: %s" % lines)
 

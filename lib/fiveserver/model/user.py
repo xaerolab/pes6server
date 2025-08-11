@@ -5,7 +5,7 @@ User-related data
 from datetime import timedelta
 import struct
 from fiveserver import log
-import util
+from fiveserver.model import util
 
 
 class Profile:
@@ -24,9 +24,7 @@ class Profile:
         self.playTime = timedelta(seconds=0)
         self.settings = ProfileSettings(None, None)
         self.comment = None
-        self.groupName = '' # 48 bytes?
-        self.lastPointsDiff = 0
-        self.lastRatingDiff = 0
+
 
 class ProfileSettings:
     
@@ -56,14 +54,11 @@ class User:
         self.state = None
         self.needsLobbyChatReplay = False
 
-    def __str__(self):
-        res = ("(hash=%s)" % self.hash)
-        res += ("(profiles=%s)" % ','.join([x.name for x in self.profiles]))
-        return res
-
     def sendData(self, packetId, data):
         if self.lobbyConnection is None:
-            log.debug('WARN: Cannot send data to user {%s}: no lobby connection' % self.hash)
+            log.msg(
+                'WARN: Cannot send data to user {%s}: '
+                'no lobby connection' % self.hash)
         else:
             self.lobbyConnection.sendData(packetId, data)
 
@@ -85,12 +80,12 @@ class UserState:
     IP-addresses, ports, lobby Id, etc.
     """
 
-    def tostr(self, s):
-        return util.stripZeros(str(s))
+    #def tostr(self, v):
+    #    return util.stripZeros(str(v)).decode('utf-8')
 
-    def __str__(self):
-        return 'UserState: (%s)' % ','.join(["%s=%s" % (k,self.tostr(v)) 
-                for k,v in self.__dict__.iteritems()])
+    def __repr__(self):
+        return 'UserState(%s)' % ','.join(["%s=%s" % (k,v) 
+                for k,v in self.__dict__.items()])
 
 
 class Stats:
@@ -99,17 +94,13 @@ class Stats:
     wins, losses, draws, goals, etc.
     """
 
-    def __init__(self, profile_id, wins, losses, draws, histWins, histLosses, histDraws, histDC,
+    def __init__(self, profile_id, wins, losses, draws,
                  goals_scored, goals_allowed,
                  streak_current, streak_best, teams=None):
         self.profile_id = profile_id
         self.wins = wins
         self.losses = losses
         self.draws = draws
-        self.histWins = histWins
-        self.histLosses = histLosses
-        self.histDraws = histDraws
-        self.histDC = histDC
         self.goals_scored = goals_scored
         self.goals_allowed = goals_allowed
         self.streak_current = streak_current

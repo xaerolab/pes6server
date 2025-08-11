@@ -1,16 +1,5 @@
 <html>
-<head>
-	<link href='http://fonts.googleapis.com/css?family=Roboto' rel='stylesheet' type='text/css'>
-	<title>evo-league Fiveserver/Sixserver Registration Form</title>
-	<style type="text/css">
-	<!--
-		body {
-			font-family: 'Roboto', sans-serif;
-		}
-	-->
-	</style>
-</head>
-<body>
+<head><title>FiveServer Registration Form</title></head>
 <script src="/md5.js" type="text/javascript"></script>
 <script>
 function makeHash() {
@@ -37,12 +26,7 @@ function makeHash() {
     return true;
 } 
 </script>
-<h3>Fiveserver/Sixserver Registration Form (PES6 open beta)</h3>
-<p><a href="https://sites.google.com/site/fiveservercom/configure-and-play#TOC-User-Registration" target="_new">Read these instructions first!</a></p>
-<p>Remember you have to modify your system's hosts file (usually located in C:/WINDOWS/system32/drivers/etc/ folder) and add this line at the end:<br><br>
-46.182.19.200 pes6gate-ec.winning-eleven.net</p>
-<p><b>Please note:</b> evo-league's Sixserver instance is currently in open beta. After the beta, you'll need a (free) evo-league account to play. You can sign up for an account <a href="http://www.evo-league.com/join.php">here</a>.</p>
-<p>Please participate in the beta process by posting in the <a href="http://www.evo-league.com/forum/viewtopic.php?t=5339">Fiveserver/Sixserver beta thread</a>.</p>
+<h3>FiveServer Registration Form</h3>
 <div class="FormBody">
 <form name="registration" action="/register" method="POST">
 <input type="hidden" name="nonce" id="nonce" value="%(nonce)s"/>
@@ -59,5 +43,4 @@ function makeHash() {
 <input class="button" type="button" id="btnGen" value="Register" onclick="if (makeHash()) {document.forms['registration'].submit();}" />
 </p>
 </div>
-</body>
 </html>

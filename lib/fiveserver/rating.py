@@ -37,37 +37,16 @@ class RatingMath:
         self.w2 = w2
 
     def getScore(self, perf, num_games):
-        return perf
+        return self.w2 + self.w1*perf*perf + self.w2*(
+            -math.exp(-num_games*0.05))
 
-    def getPoints(self, stats, dc):
-        num_games = stats.wins + stats.draws + stats.losses + dc
-        multiplier = 0
+    def getPoints(self, stats):
+        num_games = stats.wins + stats.draws + stats.losses
         if num_games == 0:
             perf = 0.0
         else:
-            perf = (stats.wins + 0.5*stats.draws)/num_games
-            if num_games <= 20:
-                multiplier = num_games/float(50)+0.5
-            elif num_games < 100:
-                multiplier = 0.9+(float(0.1)*(num_games-20)/float(80))
-            else:
-                multiplier = 1
-        return int(1000*perf*multiplier)
-
-    def getRating(self, stats, dc):
-        num_games = int(stats.wins + stats.draws + stats.losses + dc + stats.histWins + stats.histDraws + stats.histLosses + stats.histDC)
-        multiplier = 0
-        if num_games == 0:
-            perf = 0.0
-        else:
-            perf = (stats.wins + int(stats.histWins) + 0.5*int(stats.draws) + 0.5*int(stats.histDraws))/num_games
-            if num_games <= 20:
-                multiplier = num_games/float(50)+0.5
-            elif num_games < 100:
-                multiplier = 0.9+(float(0.1)*(num_games-20)/float(80))
-            else:
-                multiplier = 1
-        return int(1000*perf*multiplier)
+            perf = (stats.wins + 0.333*stats.draws)/num_games
+        return int(1000*self.getScore(perf, num_games))
 
     def getDivision(self, points):
         """

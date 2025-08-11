@@ -3,8 +3,7 @@ from twisted.enterprise import adbapi
 
 from time import time
 from random import uniform
-import _mysql_exceptions
-import log
+from fiveserver import log
 
 
 KEEPALIVE_QUERY = "SELECT (1)"
@@ -56,7 +55,7 @@ class WeightedPool:
 
     def weightedChoice(self, choices):
         sumWeight = 0
-        for choice, (cumulative, count) in choices.iteritems():
+        for choice, (cumulative, count) in choices.items():
             sumWeight+= cumulative/count
 
     def getPoolItem(self):
@@ -85,7 +84,8 @@ class KeepAliveManager:
         reactor.callLater(self.interval, self._keepAlive)
         
     def _keepAlive(self):
-        #log.debug('DEBUG: KeepAliveManager:: keep-alive query: %s' % self.query)
+        log.debug(
+            'DEBUG: KeepAliveManager:: keep-alive query: %s' % self.query)
         for item in self.storageController.readPool._items:
             item.value.runQuery(self.query)
         if self.storageController.writePool is not \
@@ -124,8 +124,8 @@ class StorageController:
     def dbInsert(self, key, sqlQuery, *args):
         startTime = time()
         poolItem = self.writePool.getPoolItem()
-        log.msg('dbInsert-DEBUG: sql: %s' % sqlQuery)
-        log.msg('dbInsert-DEBUG: args: %s' % str(args))
+        #log.msg('dbInsert-DEBUG: sql: %s' % sqlQuery)
+        #log.msg('dbInsert-DEBUG: args: %s' % str(args))
         d = poolItem.value.runInteraction(self._insert, sqlQuery, args)
         d.addCallback(self.dbWriteSuccess, poolItem, startTime)
         d.addErrback(self.dbWriteError, poolItem, startTime)

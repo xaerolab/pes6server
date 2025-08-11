@@ -3,14 +3,12 @@ Protocol implementations for PES5/PES6 packet server.
 """
 
 from twisted.internet.protocol import Protocol, ServerFactory
-from twisted.protocols.policies import TimeoutMixin
+import time
+
 from fiveserver.model import packet
 from fiveserver.model.util import PacketFormatter
 from fiveserver import log, stream, errors
 
-import time
-import sys
-import traceback
 
 def isSameGame(factory, userA, userB):
     aInfo = factory.getUserInfo(userA)
@@ -26,7 +24,7 @@ def isSameGame(factory, userA, userB):
     return result
 
 
-class PacketReceiver(Protocol, TimeoutMixin):
+class PacketReceiver(Protocol):
     """
     Base class for packet-receiving protocols
     """
@@ -39,37 +37,22 @@ class PacketReceiver(Protocol, TimeoutMixin):
 
     def connectionMade(self):
         #print dir(self)
-        self._recvd = ""
+        self._recvd = b""
         self._count = 1
 
     def connectionLost(self, reason):
-        log.debug('Connection lost: %s' % reason.getErrorMessage())
-        if self.factory.serverConfig.Debug:
-            try:
-                log.debug('Traceback: %s' % reason.getTraceback())
-            except:
-                log.msg('Could not log traceback')
+        log.msg('Connection lost: %s' % reason.getErrorMessage())
 
     def dataReceived(self, data):
-        try:
-            self.resetTimeout()
-            self._recvd += data
-            while len(self._recvd) >= 8:
-                hdr = packet.makePacketHeader(stream.xorData(self._recvd[:8], 0))
-                if len(self._recvd) < hdr.length + 24:
-                    break
-                pkt = packet.makePacket(
-                    stream.xorData(self._recvd[:hdr.length + 24], 8))
-                self._recvd = self._recvd[hdr.length + 24:]
-                self._packetReceived(pkt)
-        except:
-            log.msg("ERROR in ___init___.py:PacketReceiver.dataReceived: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-
-    def timeoutConnection(self):
-        log.msg("___init___.py: timeoutConnection")
+        self._recvd += data
+        while len(self._recvd) >= 8:
+            hdr = packet.makePacketHeader(stream.xorData(self._recvd[:8], 0))
+            if len(self._recvd) < hdr.length + 24:
+                break
+            pkt = packet.makePacket(
+                stream.xorData(self._recvd[:hdr.length + 24], 8))
+            self._recvd = self._recvd[hdr.length + 24:]
+            self._packetReceived(pkt)
 
     def send(self, pkt):
         #log.msg('sending: %s' % repr(pkt))
@@ -80,41 +63,33 @@ class PacketReceiver(Protocol, TimeoutMixin):
                 username = ''
             log.debug('[SEND {%s}]: %s' % (
                 username, PacketFormatter.format(pkt)))
-        self.transport.write(stream.xorData(str(pkt),0))
+        self.transport.write(stream.xorData(bytes(pkt),0))
         self._count += 1
 
     def sleep(self, result, seconds):
         time.sleep(seconds)
 
     def _packetReceived(self, pkt):
-        self.resetTimeout()
-        try:
-            if self.factory.serverConfig.Debug:
-                try:
-                    username = self._user.profile.name
-                except AttributeError:
-                    username = ''            
-                log.debug('[RECV {%s}]: %s' % (
-                    username, PacketFormatter.format(pkt)))
-    
-            # handle heartbeat packet here, since it's the same
-            # across all types of servers
-            if pkt.header.id == 0x0005:
-                pkt.header.packet_count = self._count
-                self.send(pkt)
-                return
-            # let subclasses handle it
-            self.packetReceived(pkt)
-        except:
-            log.msg("Error in protocol._packetReceived: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-            log.msg('[RECV {%s}]: %s' % (username, PacketFormatter.format(pkt)))
+        if self.factory.serverConfig.Debug:
+            try:
+                username = self._user.profile.name
+            except AttributeError:
+                username = ''            
+            log.debug('[RECV {%s}]: %s' % (
+                username, PacketFormatter.format(pkt)))
+
+        # handle heartbeat packet here, since it's the same
+        # across all types of servers
+        if pkt.header.id == 0x0005:
+            pkt.header.packet_count = self._count
+            self.send(pkt)
+            return
+        # let subclasses handle it
+        self.packetReceived(pkt)
 
     def sendZeros(self, id, length):
-        self.sendData(id, '\0'*length)
-
+        self.sendData(id, b'\0'*length)
+        
     def sendData(self, id, data):
         self.send(
             packet.Packet(packet.PacketHeader(id,len(data),self._count),data))
@@ -145,23 +120,9 @@ class PacketDispatcher(PacketReceiver):
     """
 
     def connectionMade(self):
-        try:
-            self.transport.setTcpKeepAlive(1)
-        except:
-            log.msg("Error in protocol.connectionMade: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-            log.msg('[RECV {%s}]: %s' % (username, PacketFormatter.format(pkt)))
-        try:
-            PacketReceiver.connectionMade(self)
-            self._handlers = dict()
-            self.register()
-        except:
-            log.msg("Error in protocol.connectionMade: %s" % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
+        PacketReceiver.connectionMade(self)
+        self._handlers = dict()
+        self.register()
 
     def addHandler(self, packet_id, handler):
         self._handlers[packet_id] = handler

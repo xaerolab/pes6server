@@ -12,15 +12,11 @@ import random
 import struct
 import socket
 
-from model import lobby, user
-import storagecontroller
-import errors
-import rating
-import log
+from fiveserver.model import lobby, user
+from fiveserver import storagecontroller, errors, rating, log
 import yaml
 import os
-import sys
-import traceback
+
 
 class YamlConfig:
     def __init__(self, yamlFile, newYamlFile=None):
@@ -28,7 +24,7 @@ class YamlConfig:
         if yamlFile is not None:
             self._yamlFile = yamlFile
             inf = open(yamlFile)
-            cfg = yaml.load(inf.read())
+            cfg = yaml.load(inf.read(), Loader=yaml.SafeLoader)
             inf.close()
             if cfg is not None:
                 self._cfg.update(cfg)
@@ -38,11 +34,11 @@ class YamlConfig:
             raise Exception(
                 'Need at least one of yamlFile, newYamlFile '
                 'keyword parameters')
-        for k, v in self._cfg.iteritems():
+        for k, v in self._cfg.items():
             setattr(self, k, v)
 
     def __iter__(self):
-        for pair in self.__dict__.iteritems():
+        for pair in self.__dict__.items():
             yield pair
 
     def __setattr__(self, name, value):
@@ -152,17 +148,16 @@ class FiveServerConfig:
     the instance of FiveServer.
     """
 
-    VERSION = '6.0'
+    VERSION = '0.5.0'
     
 
     def __init__(self, serverConfig, dbConfig,
-                 userData, profileData, matchData, statsData, profileLogic):
+                 userData, profileData, matchData, profileLogic):
         self.serverConfig = serverConfig
         self.dbConfig = dbConfig
         self.userData = userData
         self.profileData = profileData
         self.matchData = matchData
-        self.statsData = statsData
         self.profileLogic = profileLogic
 
         self.cipherKey = ('27501fd04e6b82c831024dac5c6305221974deb9388a2190'
@@ -171,9 +166,6 @@ class FiveServerConfig:
         
         self.serverIP_lan = None
         self.serverIP_wan = None
-        self.maintenance = 1
-        self.season = 1
-        self.debugMode = 1
         self.startDatetime = datetime.now()
         reactor.callLater(0, self.setIP)
 
@@ -201,8 +193,8 @@ class FiveServerConfig:
                 checkRosterHash = bool(int(item['checkRosterHash']))
             except:
                 checkRosterHash = True
-            
-            aLobby = lobby.Lobby(name, 100, matchData)
+ 
+            aLobby = lobby.Lobby(name, 100)
             aLobby.showMatches = showMatches
             aLobby.checkRosterHash = checkRosterHash
             aLobby.typeStr = str(lobbyType)
@@ -224,7 +216,6 @@ class FiveServerConfig:
             else:
                 aLobby.typeCode = 0x5f # default: open
             self.lobbies.append(aLobby)
-            log.msg('Lobby=%s checkRosterHash=%s' % (name, checkRosterHash))
 
         # auto-IP detector site
         try: 
@@ -240,13 +231,12 @@ class FiveServerConfig:
 
         # initialize latest-info dict
         self._latestUserInfo = dict()
-        
-        # roster hashes
-        self._rosterHashes = dict()
-        
+
         # read banned-list, if available
-        dirName, fileName = os.path.split(self.serverConfig._yamlFile)
-        bannedYaml = '%s/%s' % (dirName, self.serverConfig.BannedList)
+        bannedYaml = self.serverConfig.BannedList
+        if not bannedYaml.startswith('/'):
+            fsroot = os.environ.get('FSROOT','.')
+            bannedYaml = fsroot + '/' + bannedYaml
         if os.path.exists(bannedYaml):
             self.bannedList = YamlConfig(bannedYaml)
         else:
@@ -261,19 +251,7 @@ class FiveServerConfig:
 
         # set up periodical rank-compute
         reactor.callLater(5, self.computeRanks)
-        
-        reactor.callLater(6, self.storeUsersOnline)
-        
-        reactor.callLater(7, self.checkMaintenance)
-        
-        reactor.callLater(8, self.checkSeason)
-        
-        reactor.callLater(9, self.checkDebugMode)
-        
-        reactor.callLater(10, self.checkEmptyRooms)
-        
-        # reactor.callLater(10, self.serverInfoMessage)
-        
+
         # set up periodical date updates
         now = datetime.now()
         today = datetime(now.year, now.month, now.day)
@@ -284,13 +262,15 @@ class FiveServerConfig:
         message = 'Date: %s %s' % (
             time.ctime(), time.tzname[time.localtime().tm_isdst])
         for aLobby in self.lobbies:
-            try: player = aLobby.players.itervalues().next()
+            try: player = next(iter(aLobby.players.values()))
             except StopIteration: 
                 aLobby.addToChatHistory(
-                    lobby.ChatMessage(lobby.SYSTEM_PROFILE, message))
+                    lobby.ChatMessage(
+                        lobby.SYSTEM_PROFILE, message))
             else:
                 if player.lobbyConnection:
-                    player.lobbyConnection.broadcastSystemChat(aLobby, message)
+                    player.lobbyConnection.broadcastSystemChat(
+                        aLobby, message)
             # purge old chat messages
             aLobby.purgeOldChat()
         # reschedule for next day change
@@ -299,32 +279,9 @@ class FiveServerConfig:
         td = today + timedelta(days=1) - now
         reactor.callLater(td.seconds+1, self.systemDayChange)
 
-    @defer.inlineCallbacks
-    def serverInfoMessage(self):
-        log.debug('serverInfoMessage')
-        try:
-          result = yield self.statsData.GetInfoMessage(self.season)
-          profileName, name, endDate = result
-          message = 'Season %s leader: %s (%s)' % (self.season, name, profileName)
-          log.debug('serverInfoMessage: message: %s' % message)
-          for aLobby in self.lobbies:
-              try: player = aLobby.players.itervalues().next()
-              except StopIteration: 
-                  aLobby.addToChatHistory(
-                      lobby.ChatMessage(lobby.SYSTEM_PROFILE, message))
-              else:
-                  if player.lobbyConnection:
-                      player.lobbyConnection.broadcastSystemChat(aLobby, message)
-              # purge old chat messages
-              # aLobby.purgeOldChat()
-        except:
-          log.msg("Error getting rating in config.serverInfoMessage: %s" % sys.exc_info()[0])
-        #if self.debugMode == 1:
-          # reactor.callLater(60*60*6, self.serverInfoMessage)
-
     def computeRanks(self):
         def _reschedule(result):
-            log.debug('NOTICE: Ranks successfully computed for all profiles.')
+            log.msg('NOTICE: Ranks successfully computed for all profiles.')
             try: days = int(
                 self.serverConfig.ComputeRanksInterval['days'])
             except: days = None
@@ -383,7 +340,7 @@ class FiveServerConfig:
                     break
             if not goodSpec:
                 continue
-            netBuf = ''.join([chr(quad) for quad in quads])
+            netBuf = b''.join(struct.pack('!B', quad) for quad in quads)
             net = struct.unpack('!I',netBuf)[0]
             if bits == 0:
                 # determine mask based on net
@@ -396,11 +353,11 @@ class FiveServerConfig:
 
     def setIP(self, retryDelay=1, resetTime=True):
         def _setIP(result):
-            self.serverIP_wan = str(result).strip()
+            self.serverIP_wan = result.decode('utf-8').strip()
             if resetTime:
                 self.startDatetime = datetime.now()
             log.msg('Server IP-address: %s' % self.serverIP_wan)
-            log.msg('Sixserver %s ready' % FiveServerConfig.VERSION)
+            log.msg('Fiveserver %s ready' % FiveServerConfig.VERSION)
         def _error(error, retryDelay):
             retryDelay = min(retryDelay*2, 120)
             log.msg(
@@ -412,7 +369,7 @@ class FiveServerConfig:
             self.serverConfig.ServerIP = None
         if self.serverConfig.ServerIP in [None,'auto']:
             # try to determine the WAN address
-            d = client.getPage(self.ipDetectUri, timeout=10)
+            d = client.getPage(self.ipDetectUri.encode('utf-8'), timeout=10)
         else:
             # explicitly set in configuration file
             d = defer.succeed(self.serverConfig.ServerIP)
@@ -448,7 +405,6 @@ class FiveServerConfig:
 
     @defer.inlineCallbacks
     def getUser(self, hash):
-        log.debug('getUser: %s' % hash)
         users = yield self.userData.findByHash(hash)
         if not users:
             raise errors.UnknownUserError('Unknown user: %s' % hash)
@@ -473,53 +429,22 @@ class FiveServerConfig:
 
     def userOnline(self, usr):
         self.onlineUsers[usr.hash] = usr
-        #log.msg('userOnline: Online users: % s' % len(self.onlineUsers))
-        
+
     def userOffline(self, usr):
         if not usr:
             return
         try: del self.onlineUsers[usr.hash]
         except KeyError:
             pass
-        #log.msg('userOffline: Online users: % s' % len(self.onlineUsers))
 
     def isUserOnline(self, usr):
-        return self.onlineUsers.has_key(usr.hash)
+        return usr.hash in self.onlineUsers
 
     def getUserInfo(self, usr):
         return self._latestUserInfo[usr.username]
 
     def setUserInfo(self, usr, userInfo):
-        try:
-            self._latestUserInfo[usr.username] = userInfo
-            log.debug('config.setUserInfo: username=%s' % usr.username)
-        except:
-            log.msg('ERROR in config.setUserInfo')
-
-    def setRosterHash(self, userId, rosterHash):
-        try:
-            self._rosterHashes[userId] = rosterHash
-            log.debug('config.setRosterHash: userId=%s' % userId)
-        except:
-            log.msg('ERROR in config.setRosterHash: %s' % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-
-    @defer.inlineCallbacks
-    def getRosterHashForProfileId(self, profileId):
-        rosterHash = ''
-        try:
-            log.debug('getRosterHashForProfileId: profileId=%s' % profileId)
-            userId = yield self.userData.getUserIdForProfileId(profileId)
-            log.debug('getRosterHashForProfileId: userId=%s' % userId)
-            rosterHash = self._rosterHashes[userId]
-        except:
-            log.msg('ERROR in config.getRosterHashForProfileId: %s' % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-        defer.returnValue(rosterHash)
+        self._latestUserInfo[usr.username] = userInfo
 
     @defer.inlineCallbacks
     def createUser(self, username, serial, hash, nonce):
@@ -599,45 +524,4 @@ class FiveServerConfig:
 
     def getNumUsersOnline(self):
         return len(self.onlineUsers)
-    
-    def storeUsersOnline(self):
-        self.statsData.storeOnlineUsers(len(self.onlineUsers))
-        reactor.callLater(60, self.storeUsersOnline)
 
-    @defer.inlineCallbacks
-    def checkMaintenance(self):
-        self.maintenance = yield self.statsData.CheckMaintenance()
-        reactor.callLater(60, self.checkMaintenance)
-        
-    @defer.inlineCallbacks
-    def checkSeason(self):
-        self.season = yield self.statsData.CheckSeason()
-        reactor.callLater(60, self.checkSeason)
-
-    @defer.inlineCallbacks
-    def checkDebugMode(self):
-        self.debugMode = yield self.statsData.CheckDebugMode()
-        if self.debugMode == 0:
-            log.setDebug(False)
-        else:
-            log.setDebug(True)
-        reactor.callLater(60, self.checkDebugMode)
-
-    def checkEmptyRooms(self):
-        log.msg("checkEmptyRooms")
-        try:
-            for aLobby in self.lobbies:
-                log.msg("checkEmptyRooms: Lobby: %s" % aLobby.name)
-                for room in aLobby.rooms.itervalues():
-                    roomName = room.name
-                    log.msg("checkEmptyRooms: Room: %s" % roomName)
-                    if room.isEmpty():
-                        log.msg("checkEmptyRooms: Room empty, trying to delete")
-                        aLobby.deleteRoom(room)
-                        log.msg("checkEmptyRooms: Room %s deleted" % roomName)
-        except:
-            log.msg('ERROR in config.py:checkEmptyRooms: %s' % sys.exc_info()[0])
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-            log.msg("Lines: %s" % lines)
-        reactor.callLater(600, self.checkEmptyRooms)
